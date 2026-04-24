@@ -3,12 +3,23 @@ import mysql.connector
 from config import DB_HOST, DB_USER, DB_PASSWORD, DB_NAME
 
 
-def get_connection():
-    conn   = mysql.connector.connect(
-        host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME
-    )
+def get_connection(use_db=True):
+    """
+    Returns (conn, cursor). 
+    If use_db=False, it connects to the server without selecting a database.
+    """
+    config = {
+        "host": DB_HOST,
+        "user": DB_USER,
+        "password": DB_PASSWORD
+    }
+    if use_db:
+        config["database"] = DB_NAME
+        
+    conn   = mysql.connector.connect(**config)
     cursor = conn.cursor(dictionary=True)
     return conn, cursor
+
 
 
 def close_connection(conn, cursor):
@@ -20,8 +31,17 @@ def close_connection(conn, cursor):
 
 
 def init_db():
-    """Create all tables if they don't exist. Called once at startup."""
-    conn, cursor = get_connection()
+    """Create database and all tables if they don't exist."""
+    # 1. Create DB if not exists
+    conn, cursor = get_connection(use_db=False)
+    try:
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {DB_NAME}")
+        conn.commit()
+    finally:
+        close_connection(conn, cursor)
+
+    # 2. Create Tables
+    conn, cursor = get_connection(use_db=True)
     try:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -66,3 +86,4 @@ def init_db():
         conn.commit()
     finally:
         close_connection(conn, cursor)
+

@@ -38,89 +38,130 @@ from modules.portfolio import (generate_recommendation, save_portfolio,
                                 get_saved_portfolios, delete_saved_portfolio,
                                 simulate_value)
 
-# ── Global CSS ─────────────────────────────────────────────────────────────────
 st.markdown("""
+
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;500;600;700;800&display=swap');
 
 :root{
-  --bg:#0a0e1a; --surface:#111827; --border:#1e2d40;
-  --accent:#00d4aa; --blue:#3b82f6;
-  --red:#ef4444;   --green:#22c55e; --amber:#f59e0b;
-  --text:#e2e8f0;  --muted:#64748b;
+  --bg:#05070a; --surface:rgba(17, 24, 39, 0.7); --border:rgba(255, 255, 255, 0.1);
+  --accent:#00ffa3; --accent-glow:rgba(0, 255, 163, 0.3);
+  --blue:#3b82f6; --red:#ff4d4d; --green:#00e676; --amber:#ffab00;
+  --text:#f8fafc; --muted:#94a3b8;
 }
 
+/* Base styles */
 html,body,[data-testid="stAppViewContainer"]{
-  background:var(--bg)!important; color:var(--text)!important;
+  background: radial-gradient(circle at top right, #0a0e1a 0%, #05070a 100%)!important;
+  color:var(--text)!important;
   font-family:'Syne',sans-serif!important;
 }
+[data-testid="stHeader"]{ background:transparent!important; }
+
+/* Sidebar */
 [data-testid="stSidebar"]{
-  background:var(--surface)!important;
-  border-right:1px solid var(--border)!important;
+  background: rgba(10, 14, 26, 0.95)!important;
+  border-right: 1px solid var(--border)!important;
+  backdrop-filter: blur(10px);
 }
 [data-testid="stSidebar"] *{ color:var(--text)!important; }
 
-h1,h2,h3,h4{ font-family:'Syne',sans-serif!important; color:var(--text)!important; }
+/* Typography */
+h1,h2,h3,h4{ font-family:'Syne',sans-serif!important; font-weight:800!important; letter-spacing:-0.02em; }
+p, span, label{ font-family:'Syne', sans-serif!important; font-weight:500; }
 
-/* metrics */
+/* Glass Cards */
+.card{
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 24px;
+  margin-bottom: 16px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.card:hover{
+  border-color: var(--accent);
+  box-shadow: 0 8px 40px 0 rgba(0, 255, 163, 0.1);
+  transform: translateY(-2px);
+}
+
+/* Metrics */
 div[data-testid="stMetric"]{
-  background:var(--surface); border-radius:10px;
-  padding:16px; border:1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 16px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  backdrop-filter: blur(4px);
 }
 div[data-testid="stMetric"] label{
-  color:var(--muted)!important; font-size:.75rem!important;
-  text-transform:uppercase; letter-spacing:1px;
+  color:var(--muted)!important; font-size:.7rem!important;
+  font-weight:700!important; text-transform:uppercase; letter-spacing:1.5px;
 }
 div[data-testid="stMetric"] [data-testid="stMetricValue"]{
   font-family:'Space Mono',monospace; color:var(--text)!important;
+  font-size: 1.8rem!important; font-weight:700!important;
 }
 
-/* buttons */
+/* Buttons */
 .stButton>button{
-  background:var(--accent)!important; color:#0a0e1a!important;
-  font-family:'Syne',sans-serif!important; font-weight:700!important;
-  border:none!important; border-radius:8px!important;
+  background: linear-gradient(135deg, var(--accent) 0%, #00d4aa 100%)!important;
+  color:#05070a!important;
+  font-family:'Syne',sans-serif!important; font-weight:800!important;
+  border:none!important; border-radius:12px!important;
+  padding: 0.6rem 1.5rem!important;
+  transition: all 0.2s!important;
+  text-transform: uppercase; letter-spacing: 1px;
 }
-.stButton>button:hover{ opacity:.85!important; }
-
-/* inputs */
-[data-testid="stTextInput"]  input,
-[data-testid="stNumberInput"] input{
-  background:var(--surface)!important; color:var(--text)!important;
-  border-color:var(--border)!important;
+.stButton>button:hover{
+  transform: scale(1.02);
+  box-shadow: 0 0 20px var(--accent-glow);
 }
+.stButton>button:active{ transform: scale(0.98); }
 
-/* cards */
-.card{
-  background:var(--surface); border:1px solid var(--border);
-  border-radius:14px; padding:22px; margin-bottom:12px;
-  transition:border-color .2s;
-}
-.card:hover{ border-color:var(--accent); }
-
-/* section headers */
-.sh{
-  font-size:.8rem; font-weight:700; color:var(--muted);
-  text-transform:uppercase; letter-spacing:2px;
-  border-bottom:1px solid var(--border);
-  padding-bottom:6px; margin-bottom:14px; margin-top:4px;
+/* Inputs */
+[data-testid="stTextInput"] input,
+[data-testid="stNumberInput"] input,
+[data-testid="stSelectbox"] div[data-baseweb="select"]{
+  background: rgba(255, 255, 255, 0.05)!important;
+  color:var(--text)!important;
+  border: 1px solid var(--border)!important;
+  border-radius: 10px!important;
 }
 
-/* risk badges */
+/* Badges */
 .badge{
-  display:inline-block; padding:3px 12px; border-radius:20px;
-  font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:1px;
+  display:inline-block; padding:4px 14px; border-radius:30px;
+  font-size:.65rem; font-weight:800; text-transform:uppercase; letter-spacing:1.2px;
 }
-.b-con{ background:rgba(34,197,94,.15);  color:#22c55e; }
-.b-bal{ background:rgba(245,158,11,.15); color:#f59e0b; }
-.b-agg{ background:rgba(239,68,68,.15);  color:#ef4444; }
+.b-con{ background:rgba(0, 230, 118, 0.15);  color:var(--green); border:1px solid rgba(0, 230, 118, 0.3); }
+.b-bal{ background:rgba(255, 171, 0, 0.15); color:var(--amber); border:1px solid rgba(255, 171, 0, 0.3); }
+.b-agg{ background:rgba(255, 77, 77, 0.15);  color:var(--red); border:1px solid rgba(255, 77, 77, 0.3); }
 
-/* stat row inside cards */
-.stat-row{ display:flex; gap:28px; flex-wrap:wrap; margin-top:12px; }
-.stat dt{ color:var(--muted); font-size:.68rem; text-transform:uppercase; letter-spacing:.8px; }
-.stat dd{ font-family:'Space Mono',monospace; font-size:.92rem; margin:0; }
+/* Stats */
+.stat-row{ display:flex; gap:32px; flex-wrap:wrap; margin-top:16px; }
+.stat dt{ color:var(--muted); font-size:.65rem; text-transform:uppercase; letter-spacing:1px; font-weight:700; margin-bottom:4px; }
+.stat dd{ font-family:'Space Mono',monospace; font-size:1rem; margin:0; font-weight:700; color:var(--text); }
+
+/* Animations */
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+.pulse { animation: pulse 2s infinite ease-in-out; }
+
+/* Custom Section Header */
+.sh{
+  font-size:.75rem; font-weight:800; color:var(--accent);
+  text-transform:uppercase; letter-spacing:2.5px;
+  border-left: 3px solid var(--accent);
+  padding-left: 12px; margin-bottom:20px; margin-top:24px;
+}
 </style>
 """, unsafe_allow_html=True)
+
 
 # ── Plotly base theme ─────────────────────────────────────────────────────────
 _PT = dict(
@@ -178,14 +219,19 @@ with st.sidebar:
     st.markdown("---")
     if _db_ok:
         st.markdown(
-            '<span style="color:#22c55e;font-size:.7rem;">🟢 DB connected</span>',
+            '<div class="pulse" style="color:var(--green);font-size:.7rem;'
+            'display:flex;align-items:center;gap:6px;">'
+            '<span style="font-size:1.2rem;">●</span> Engine Operational</div>',
             unsafe_allow_html=True,
         )
     else:
         st.markdown(
-            '<span style="color:#ef4444;font-size:.7rem;">🔴 DB not connected</span>',
+            '<div style="color:var(--red);font-size:.7rem;'
+            'display:flex;align-items:center;gap:6px;">'
+            '<span style="font-size:1.2rem;">●</span> Database Offline</div>',
             unsafe_allow_html=True,
         )
+
         if _db_err:
             st.caption(_db_err[:140])
 
