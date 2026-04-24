@@ -1,47 +1,43 @@
 # db/connection.py
 import mysql.connector
-from config import DB_HOST, DB_USER, DB_PASSWORD, DB_NAME
+from config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
 
 
 def get_connection(use_db=True):
     """
-    Returns (conn, cursor). 
+    Returns (conn, cursor).
     If use_db=False, it connects to the server without selecting a database.
     """
     config = {
         "host": DB_HOST,
+        "port": DB_PORT,
         "user": DB_USER,
-        "password": DB_PASSWORD
+        "password": DB_PASSWORD,
     }
+
     if use_db:
         config["database"] = DB_NAME
-        
-    conn   = mysql.connector.connect(**config)
+
+    conn = mysql.connector.connect(**config)
     cursor = conn.cursor(dictionary=True)
     return conn, cursor
 
 
-
 def close_connection(conn, cursor):
     try:
-        if cursor: cursor.close()
-        if conn:   conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
     except Exception:
         pass
 
 
 def init_db():
-    """Create database and all tables if they don't exist."""
-    # 1. Create DB if not exists
-    conn, cursor = get_connection(use_db=False)
-    try:
-        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {DB_NAME}")
-        conn.commit()
-    finally:
-        close_connection(conn, cursor)
+    """Create all tables if they don't exist."""
 
-    # 2. Create Tables
     conn, cursor = get_connection(use_db=True)
+
     try:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -52,6 +48,7 @@ def init_db():
                 created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS profiles (
                 id                 INT PRIMARY KEY AUTO_INCREMENT,
@@ -68,6 +65,7 @@ def init_db():
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         """)
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS saved_portfolios (
                 id             INT PRIMARY KEY AUTO_INCREMENT,
@@ -83,7 +81,8 @@ def init_db():
                 FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE
             )
         """)
+
         conn.commit()
+
     finally:
         close_connection(conn, cursor)
-
