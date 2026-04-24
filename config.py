@@ -12,6 +12,6 @@ DB_NAME = st.secrets["DB_NAME"]
 # -------------------------
 # Portfolio config
 # -------------------------
-RISK_FREE_RATE = 0.06
-TOP_ASSETS_PER_SECTOR = 5
-DEFAULT_CORRELATION = 0.25
+RISK_FREE_RATE        = 0.03
+TOP_ASSETS_PER_SECTOR = 2
+DEFAULT_CORRELATION   = 0.10
