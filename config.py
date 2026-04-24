@@ -1,8 +1,7 @@
 import streamlit as st
 
-DB_HOST = st.secrets["mysql.railway.internal"]
-DB_PORT = int(st.secrets["3306"])
-DB_USER = st.secrets["root"]
-DB_PASSWORD = st.secrets["RjppinauDqPuZfmRjqPjCmkVoRUbhxIB"]
-DB_NAME = st.secrets["railway"]
-
+DB_HOST = st.secrets["DB_HOST"]
+DB_USER = st.secrets["DB_USER"]
+DB_PASSWORD = st.secrets["DB_PASSWORD"]
+DB_NAME = st.secrets["DB_NAME"]
+DB_PORT = int(st.secrets.get("DB_PORT", 3306))
