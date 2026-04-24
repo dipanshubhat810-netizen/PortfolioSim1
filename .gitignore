@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.pyc
+.env
+users.db
+portfolio_sim.db
+.streamlit/secrets.toml
