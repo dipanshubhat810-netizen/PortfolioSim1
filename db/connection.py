@@ -1,11 +1,16 @@
 # db/connection.py
 import mysql.connector
-from config import DB_HOST, DB_USER, DB_PASSWORD, DB_NAME
+from config import DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT
 
 
 def get_connection():
-    conn   = mysql.connector.connect(
-        host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME
+    conn = mysql.connector.connect(
+        host=DB_HOST,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        database=DB_NAME,
+        port=int(DB_PORT),
+        connection_timeout=10,
     )
     cursor = conn.cursor(dictionary=True)
     return conn, cursor
