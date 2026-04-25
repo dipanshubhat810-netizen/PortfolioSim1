@@ -36,132 +36,91 @@ from modules.profiles  import (get_all_profiles, get_profile,
                                 create_profile, delete_profile, get_risk_label)
 from modules.portfolio import (generate_recommendation, save_portfolio,
                                 get_saved_portfolios, delete_saved_portfolio,
-                                simulate_value)
+                                simulate_value, SECTORS)
 
+# ── Global CSS ─────────────────────────────────────────────────────────────────
 st.markdown("""
-
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap');
 
 :root{
-  --bg:#05070a; --surface:rgba(17, 24, 39, 0.7); --border:rgba(255, 255, 255, 0.1);
-  --accent:#00ffa3; --accent-glow:rgba(0, 255, 163, 0.3);
-  --blue:#3b82f6; --red:#ff4d4d; --green:#00e676; --amber:#ffab00;
-  --text:#f8fafc; --muted:#94a3b8;
+  --bg:#0a0e1a; --surface:#111827; --border:#1e2d40;
+  --accent:#00d4aa; --blue:#3b82f6;
+  --red:#ef4444;   --green:#22c55e; --amber:#f59e0b;
+  --text:#e2e8f0;  --muted:#64748b;
 }
 
-/* Base styles */
 html,body,[data-testid="stAppViewContainer"]{
-  background: radial-gradient(circle at top right, #0a0e1a 0%, #05070a 100%)!important;
-  color:var(--text)!important;
+  background:var(--bg)!important; color:var(--text)!important;
   font-family:'Syne',sans-serif!important;
 }
-[data-testid="stHeader"]{ background:transparent!important; }
-
-/* Sidebar */
 [data-testid="stSidebar"]{
-  background: rgba(10, 14, 26, 0.95)!important;
-  border-right: 1px solid var(--border)!important;
-  backdrop-filter: blur(10px);
+  background:var(--surface)!important;
+  border-right:1px solid var(--border)!important;
 }
 [data-testid="stSidebar"] *{ color:var(--text)!important; }
 
-/* Typography */
-h1,h2,h3,h4{ font-family:'Syne',sans-serif!important; font-weight:800!important; letter-spacing:-0.02em; }
-p, span, label{ font-family:'Syne', sans-serif!important; font-weight:500; }
+h1,h2,h3,h4{ font-family:'Syne',sans-serif!important; color:var(--text)!important; }
 
-/* Glass Cards */
-.card{
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 24px;
-  margin-bottom: 16px;
-  backdrop-filter: blur(12px);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.card:hover{
-  border-color: var(--accent);
-  box-shadow: 0 8px 40px 0 rgba(0, 255, 163, 0.1);
-  transform: translateY(-2px);
-}
-
-/* Metrics */
+/* metrics */
 div[data-testid="stMetric"]{
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 16px;
-  padding: 20px;
-  border: 1px solid var(--border);
-  backdrop-filter: blur(4px);
+  background:var(--surface); border-radius:10px;
+  padding:16px; border:1px solid var(--border);
 }
 div[data-testid="stMetric"] label{
-  color:var(--muted)!important; font-size:.7rem!important;
-  font-weight:700!important; text-transform:uppercase; letter-spacing:1.5px;
+  color:var(--muted)!important; font-size:.75rem!important;
+  text-transform:uppercase; letter-spacing:1px;
 }
 div[data-testid="stMetric"] [data-testid="stMetricValue"]{
   font-family:'Space Mono',monospace; color:var(--text)!important;
-  font-size: 1.8rem!important; font-weight:700!important;
 }
 
-/* Buttons */
+/* buttons */
 .stButton>button{
-  background: linear-gradient(135deg, var(--accent) 0%, #00d4aa 100%)!important;
-  color:#05070a!important;
-  font-family:'Syne',sans-serif!important; font-weight:800!important;
-  border:none!important; border-radius:12px!important;
-  padding: 0.6rem 1.5rem!important;
-  transition: all 0.2s!important;
-  text-transform: uppercase; letter-spacing: 1px;
+  background:var(--accent)!important; color:#0a0e1a!important;
+  font-family:'Syne',sans-serif!important; font-weight:700!important;
+  border:none!important; border-radius:8px!important;
 }
-.stButton>button:hover{
-  transform: scale(1.02);
-  box-shadow: 0 0 20px var(--accent-glow);
-}
-.stButton>button:active{ transform: scale(0.98); }
+.stButton>button:hover{ opacity:.85!important; }
 
-/* Inputs */
-[data-testid="stTextInput"] input,
-[data-testid="stNumberInput"] input,
-[data-testid="stSelectbox"] div[data-baseweb="select"]{
-  background: rgba(255, 255, 255, 0.05)!important;
-  color:var(--text)!important;
-  border: 1px solid var(--border)!important;
-  border-radius: 10px!important;
+/* inputs */
+[data-testid="stTextInput"]  input,
+[data-testid="stNumberInput"] input{
+  background:var(--surface)!important; color:var(--text)!important;
+  border-color:var(--border)!important;
 }
 
-/* Badges */
-.badge{
-  display:inline-block; padding:4px 14px; border-radius:30px;
-  font-size:.65rem; font-weight:800; text-transform:uppercase; letter-spacing:1.2px;
+/* cards */
+.card{
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:14px; padding:22px; margin-bottom:12px;
+  transition:border-color .2s;
 }
-.b-con{ background:rgba(0, 230, 118, 0.15);  color:var(--green); border:1px solid rgba(0, 230, 118, 0.3); }
-.b-bal{ background:rgba(255, 171, 0, 0.15); color:var(--amber); border:1px solid rgba(255, 171, 0, 0.3); }
-.b-agg{ background:rgba(255, 77, 77, 0.15);  color:var(--red); border:1px solid rgba(255, 77, 77, 0.3); }
+.card:hover{ border-color:var(--accent); }
 
-/* Stats */
-.stat-row{ display:flex; gap:32px; flex-wrap:wrap; margin-top:16px; }
-.stat dt{ color:var(--muted); font-size:.65rem; text-transform:uppercase; letter-spacing:1px; font-weight:700; margin-bottom:4px; }
-.stat dd{ font-family:'Space Mono',monospace; font-size:1rem; margin:0; font-weight:700; color:var(--text); }
-
-/* Animations */
-@keyframes pulse {
-  0% { opacity: 1; }
-  50% { opacity: 0.5; }
-  100% { opacity: 1; }
-}
-.pulse { animation: pulse 2s infinite ease-in-out; }
-
-/* Custom Section Header */
+/* section headers */
 .sh{
-  font-size:.75rem; font-weight:800; color:var(--accent);
-  text-transform:uppercase; letter-spacing:2.5px;
-  border-left: 3px solid var(--accent);
-  padding-left: 12px; margin-bottom:20px; margin-top:24px;
+  font-size:.8rem; font-weight:700; color:var(--muted);
+  text-transform:uppercase; letter-spacing:2px;
+  border-bottom:1px solid var(--border);
+  padding-bottom:6px; margin-bottom:14px; margin-top:4px;
 }
+
+/* risk badges */
+.badge{
+  display:inline-block; padding:3px 12px; border-radius:20px;
+  font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:1px;
+}
+.b-con{ background:rgba(34,197,94,.15);  color:#22c55e; }
+.b-bal{ background:rgba(245,158,11,.15); color:#f59e0b; }
+.b-agg{ background:rgba(239,68,68,.15);  color:#ef4444; }
+
+/* stat row inside cards */
+.stat-row{ display:flex; gap:28px; flex-wrap:wrap; margin-top:12px; }
+.stat dt{ color:var(--muted); font-size:.68rem; text-transform:uppercase; letter-spacing:.8px; }
+.stat dd{ font-family:'Space Mono',monospace; font-size:.92rem; margin:0; }
 </style>
 """, unsafe_allow_html=True)
-
 
 # ── Plotly base theme ─────────────────────────────────────────────────────────
 _PT = dict(
@@ -219,19 +178,14 @@ with st.sidebar:
     st.markdown("---")
     if _db_ok:
         st.markdown(
-            '<div class="pulse" style="color:var(--green);font-size:.7rem;'
-            'display:flex;align-items:center;gap:6px;">'
-            '<span style="font-size:1.2rem;">●</span> Engine Operational</div>',
+            '<span style="color:#22c55e;font-size:.7rem;">🟢 DB connected</span>',
             unsafe_allow_html=True,
         )
     else:
         st.markdown(
-            '<div style="color:var(--red);font-size:.7rem;'
-            'display:flex;align-items:center;gap:6px;">'
-            '<span style="font-size:1.2rem;">●</span> Database Offline</div>',
+            '<span style="color:#ef4444;font-size:.7rem;">🔴 DB not connected</span>',
             unsafe_allow_html=True,
         )
-
         if _db_err:
             st.caption(_db_err[:140])
 
@@ -516,21 +470,122 @@ def view_profile_detail():
     st.markdown("---")
 
     # ── GENERATE RECOMMENDATION ────────────────────────────────────────────
-    st.markdown('<div class="sh">Portfolio Recommendation</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sh">Generate Portfolio Recommendation</div>',
+                unsafe_allow_html=True)
 
-    if st.button("🚀  Generate Recommendation", use_container_width=True):
-        with st.spinner("Running Markowitz engine…"):
-            st.session_state["preview"] = generate_recommendation(profile)
-        st.rerun()
+    # Step 1 — big button to open the form
+    if not st.session_state.get("show_gen_form") and not st.session_state.get("preview"):
+        if st.button("🚀  Generate Recommendation", use_container_width=True, key="btn_open_form"):
+            st.session_state["show_gen_form"] = True
+            st.rerun()
 
-    # ── Show preview ───────────────────────────────────────────────────────
+    # Step 2 — input form (shown after clicking the button)
+    if st.session_state.get("show_gen_form") and not st.session_state.get("preview"):
+        st.markdown("")
+        st.markdown('<div class="sh">Recommendation Inputs</div>', unsafe_allow_html=True)
+        st.caption("Fill in your preferences — the engine will generate a personalised portfolio.")
+
+        with st.form("gen_form"):
+            fa, fb = st.columns(2)
+            with fa:
+                form_amount = st.number_input(
+                    "💰 Investment Amount (₹)",
+                    min_value=1000.0,
+                    value=float(profile.get("investment_amount") or 100000),
+                    step=5000.0,
+                )
+                form_horizon = st.selectbox(
+                    "⏳ Time Horizon",
+                    ["Short (< 1 yr)", "Medium (1–3 yrs)", "Long (3–7 yrs)", "Very Long (7+ yrs)"],
+                    index=["Short (< 1 yr)", "Medium (1–3 yrs)",
+                           "Long (3–7 yrs)", "Very Long (7+ yrs)"].index(
+                               profile.get("investment_horizon") or "Medium (1–3 yrs)"
+                           ) if profile.get("investment_horizon") in
+                           ["Short (< 1 yr)", "Medium (1–3 yrs)",
+                            "Long (3–7 yrs)", "Very Long (7+ yrs)"] else 1,
+                )
+            with fb:
+                form_risk = st.selectbox(
+                    "⚡ Risk Preference",
+                    list(range(1, 11)),
+                    index=int(profile.get("risk_capacity") or 5) - 1,
+                    format_func=lambda x: {
+                        1:"1 — Very Safe",    2:"2 — Very Safe",
+                        3:"3 — Conservative", 4:"4 — Conservative",
+                        5:"5 — Balanced",     6:"6 — Balanced",
+                        7:"7 — Aggressive",   8:"8 — Aggressive",
+                        9:"9 — High Risk",   10:"10 — Maximum Risk",
+                    }[x],
+                )
+                all_sector_names = list(SECTORS.values())
+                form_sectors = st.multiselect(
+                    "🏭 Interested Sectors (optional — leave empty for auto-select)",
+                    all_sector_names,
+                    default=[],
+                    help="Select up to 3 sectors. If none selected, sectors are chosen based on your risk profile.",
+                )
+
+            col_gen, col_cancel = st.columns([2, 1])
+            with col_gen:
+                submitted = st.form_submit_button(
+                    "⚙️ Generate Portfolio", use_container_width=True
+                )
+            with col_cancel:
+                cancelled = st.form_submit_button(
+                    "Cancel", use_container_width=True
+                )
+
+        if cancelled:
+            st.session_state.pop("show_gen_form", None)
+            st.rerun()
+
+        if submitted:
+            # Map sector names back to IDs
+            sector_name_to_id = {v: k for k, v in SECTORS.items()}
+            sel_ids = [sector_name_to_id[s] for s in form_sectors if s in sector_name_to_id]
+            with st.spinner("Running Markowitz engine…"):
+                st.session_state["preview"] = generate_recommendation(
+                    profile,
+                    investment_amount=form_amount,
+                    selected_sector_ids=sel_ids if sel_ids else None,
+                    time_horizon=form_horizon,
+                    risk_override=form_risk,
+                )
+            st.session_state.pop("show_gen_form", None)
+            st.rerun()
+
+    # Step 3 — show preview after generation
     prev = st.session_state.get("preview")
     if prev and prev.get("profile_id") == pid:
-
-        rc = _RISK_C[prev["risk_type"]]
         st.markdown("")
         st.markdown('<div class="sh">Generated Portfolio Preview</div>',
                     unsafe_allow_html=True)
+
+        # Show what inputs were used
+        st.markdown(f"""
+        <div style="background:#0a0e1a;border-radius:10px;padding:14px 18px;
+                    margin-bottom:16px;display:flex;gap:32px;flex-wrap:wrap;">
+          <div><span style="color:#64748b;font-size:.7rem;text-transform:uppercase;">
+            Amount</span><br>
+            <span style="font-family:'Space Mono';color:#00d4aa;">
+              ₹{prev.get('investment_amount', prev.get('base_amount',0)):,.0f}
+            </span></div>
+          <div><span style="color:#64748b;font-size:.7rem;text-transform:uppercase;">
+            Horizon</span><br>
+            <span style="font-family:'Space Mono';">
+              {prev.get('time_horizon') or '—'}
+            </span></div>
+          <div><span style="color:#64748b;font-size:.7rem;text-transform:uppercase;">
+            Risk Used</span><br>
+            <span style="font-family:'Space Mono';">
+              {prev.get('risk_used', '—')}/10
+            </span></div>
+          <div><span style="color:#64748b;font-size:.7rem;text-transform:uppercase;">
+            Sectors</span><br>
+            <span style="font-family:'Space Mono';">
+              {", ".join(prev.get('selected_sectors') or []) or 'Auto-selected'}
+            </span></div>
+        </div>""", unsafe_allow_html=True)
 
         m1,m2,m3,m4 = st.columns(4)
         m1.metric("Expected Return",   f"{prev['expected_return']*100:.2f}%")
@@ -543,7 +598,7 @@ def view_profile_detail():
 
         # Save / Discard row
         st.markdown("")
-        lc, sc, dc = st.columns([3,1,1])
+        lc, sc, dc = st.columns([3, 1, 1])
         with lc:
             port_lbl = st.text_input(
                 "Portfolio Label (optional)",
@@ -588,8 +643,32 @@ def view_profile_detail():
                 sm1,sm2,sm3,sm4 = st.columns(4)
                 sm1.metric("Expected Return", f"{float(sp['exp_return'])*100:.2f}%")
                 sm2.metric("Variance",        f"{float(sp['variance'])*100:.4f}%")
-                sm3.metric("Base Amount",     f"₹{pdata.get('base_amount',0):,.0f}")
+                sm3.metric("Invested Amount", f"₹{float(sp.get('investment_amount') or pdata.get('base_amount',0)):,.0f}")
                 sm4.metric("Assets",          len(pdata.get("assets",[])))
+                # Show sectors + horizon if stored
+                sectors_str  = sp.get("selected_sectors") or ""
+                horizon_str  = sp.get("time_horizon") or pdata.get("time_horizon","")
+                risk_used    = pdata.get("risk_used","")
+                if sectors_str or horizon_str or risk_used:
+                    st.markdown(f"""
+                    <div style="background:#0a0e1a;border-radius:8px;padding:10px 16px;
+                                margin-bottom:12px;display:flex;gap:28px;flex-wrap:wrap;">
+                      <div><span style="color:#64748b;font-size:.68rem;text-transform:uppercase;">
+                        Sectors</span><br>
+                        <span style="font-family:'Space Mono';font-size:.82rem;">
+                          {sectors_str or 'Auto-selected'}
+                        </span></div>
+                      <div><span style="color:#64748b;font-size:.68rem;text-transform:uppercase;">
+                        Horizon</span><br>
+                        <span style="font-family:'Space Mono';font-size:.82rem;">
+                          {horizon_str or '—'}
+                        </span></div>
+                      <div><span style="color:#64748b;font-size:.68rem;text-transform:uppercase;">
+                        Risk Used</span><br>
+                        <span style="font-family:'Space Mono';font-size:.82rem;">
+                          {str(risk_used) + '/10' if risk_used else '—'}
+                        </span></div>
+                    </div>""", unsafe_allow_html=True)
                 st.markdown("")
 
                 _render_portfolio(pdata)
