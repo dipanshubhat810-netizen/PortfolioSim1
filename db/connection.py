@@ -1,733 +1,86 @@
-"""
-PortfolioSim · app.py
-─────────────────────
-Single-file Streamlit app. All views live here.
-Navigation is driven by st.session_state["view"].
-
-  not logged in  →  view_auth()
-  "profiles"     →  view_profiles()
-  "detail"       →  view_profile_detail()
-"""
-
-import streamlit as st
-import plotly.graph_objects as go
-import pandas as pd
-
-# ── Page config ───────────────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="PortfolioSim",
-    page_icon="💼",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
-# ── DB init (runs once; shows error banner if MySQL not reachable) ─────────────
-_db_ok, _db_err = False, ""
-try:
-    from db.connection import init_db
-    init_db()
-    _db_ok = True
-except Exception as _e:
-    _db_err = str(_e)
-
-from modules.auth      import (is_logged_in, current_user, set_session,
-                                logout, register_user, login_user)
-from modules.profiles  import (get_all_profiles, get_profile,
-                                create_profile, delete_profile, get_risk_label)
-from modules.portfolio import (generate_recommendation, save_portfolio,
-                                get_saved_portfolios, delete_saved_portfolio,
-                                simulate_value, SECTORS)
-
-# ── Global CSS ─────────────────────────────────────────────────────────────────
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap');
-
-:root{
-  --bg:#0a0e1a; --surface:#111827; --border:#1e2d40;
-  --accent:#00d4aa; --blue:#3b82f6;
-  --red:#ef4444;   --green:#22c55e; --amber:#f59e0b;
-  --text:#e2e8f0;  --muted:#64748b;
-}
-
-html,body,[data-testid="stAppViewContainer"]{
-  background:var(--bg)!important; color:var(--text)!important;
-  font-family:'Syne',sans-serif!important;
-}
-[data-testid="stSidebar"]{
-  background:var(--surface)!important;
-  border-right:1px solid var(--border)!important;
-}
-[data-testid="stSidebar"] *{ color:var(--text)!important; }
-
-h1,h2,h3,h4{ font-family:'Syne',sans-serif!important; color:var(--text)!important; }
-
-/* metrics */
-div[data-testid="stMetric"]{
-  background:var(--surface); border-radius:10px;
-  padding:16px; border:1px solid var(--border);
-}
-div[data-testid="stMetric"] label{
-  color:var(--muted)!important; font-size:.75rem!important;
-  text-transform:uppercase; letter-spacing:1px;
-}
-div[data-testid="stMetric"] [data-testid="stMetricValue"]{
-  font-family:'Space Mono',monospace; color:var(--text)!important;
-}
-
-/* buttons */
-.stButton>button{
-  background:var(--accent)!important; color:#0a0e1a!important;
-  font-family:'Syne',sans-serif!important; font-weight:700!important;
-  border:none!important; border-radius:8px!important;
-}
-.stButton>button:hover{ opacity:.85!important; }
-
-/* inputs */
-[data-testid="stTextInput"]  input,
-[data-testid="stNumberInput"] input{
-  background:var(--surface)!important; color:var(--text)!important;
-  border-color:var(--border)!important;
-}
-
-/* cards */
-.card{
-  background:var(--surface); border:1px solid var(--border);
-  border-radius:14px; padding:22px; margin-bottom:12px;
-  transition:border-color .2s;
-}
-.card:hover{ border-color:var(--accent); }
-
-/* section headers */
-.sh{
-  font-size:.8rem; font-weight:700; color:var(--muted);
-  text-transform:uppercase; letter-spacing:2px;
-  border-bottom:1px solid var(--border);
-  padding-bottom:6px; margin-bottom:14px; margin-top:4px;
-}
-
-/* risk badges */
-.badge{
-  display:inline-block; padding:3px 12px; border-radius:20px;
-  font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:1px;
-}
-.b-con{ background:rgba(34,197,94,.15);  color:#22c55e; }
-.b-bal{ background:rgba(245,158,11,.15); color:#f59e0b; }
-.b-agg{ background:rgba(239,68,68,.15);  color:#ef4444; }
-
-/* stat row inside cards */
-.stat-row{ display:flex; gap:28px; flex-wrap:wrap; margin-top:12px; }
-.stat dt{ color:var(--muted); font-size:.68rem; text-transform:uppercase; letter-spacing:.8px; }
-.stat dd{ font-family:'Space Mono',monospace; font-size:.92rem; margin:0; }
-</style>
-""", unsafe_allow_html=True)
-
-# ── Plotly base theme ─────────────────────────────────────────────────────────
-_PT = dict(
-    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(family="Syne", color="#e2e8f0"),
-    margin=dict(l=0, r=0, t=28, b=0),
-)
-_COLORS = ["#00d4aa","#3b82f6","#a855f7","#f59e0b","#ef4444","#22c55e","#06b6d4","#8b5cf6"]
-_RISK_C = {"conservative":"#22c55e","balanced":"#f59e0b","aggressive":"#ef4444"}
-_RISK_B = {"conservative":"b-con",  "balanced":"b-bal",  "aggressive":"b-agg"}
+# db/connection.py
+import mysql.connector
+from config import DB_HOST, DB_USER, DB_PASSWORD, DB_NAME
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  SIDEBAR  (minimal: logo + user info + back + logout)
-# ─────────────────────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown(
-        '<div style="font-size:1.5rem;font-weight:800;color:#00d4aa;'
-        'letter-spacing:-1px;">💼 PortfolioSim</div>',
-        unsafe_allow_html=True,
+def get_connection():
+    conn   = mysql.connector.connect(
+        host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME
     )
-    st.markdown(
-        '<div style="font-size:.65rem;color:#64748b;letter-spacing:3px;'
-        'text-transform:uppercase;margin-bottom:8px;">Investment Simulator</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown("---")
-
-    if is_logged_in():
-        u = current_user()
-        st.markdown(f"**👤 {u['username']}**")
-        st.markdown(
-            f'<span style="color:#64748b;font-size:.8rem;">{u["email"]}</span>',
-            unsafe_allow_html=True,
-        )
-        st.markdown("")
-
-        if st.session_state.get("view") == "detail":
-            if st.button("← Back to Profiles", use_container_width=True):
-                st.session_state.update(view="profiles")
-                st.session_state.pop("pid",     None)
-                st.session_state.pop("preview", None)
-                st.rerun()
-
-        st.markdown("---")
-        if st.button("🚪 Logout", use_container_width=True):
-            logout()
-            st.rerun()
-    else:
-        st.markdown(
-            '<span style="color:#64748b;font-size:.85rem;">Please log in.</span>',
-            unsafe_allow_html=True,
-        )
-
-    st.markdown("---")
-    if _db_ok:
-        st.markdown(
-            '<span style="color:#22c55e;font-size:.7rem;">🟢 DB connected</span>',
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            '<span style="color:#ef4444;font-size:.7rem;">🔴 DB not connected</span>',
-            unsafe_allow_html=True,
-        )
-        if _db_err:
-            st.caption(_db_err[:140])
+    cursor = conn.cursor(dictionary=True)
+    return conn, cursor
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  HELPER — render portfolio pie + scatter + asset table
-# ─────────────────────────────────────────────────────────────────────────────
-def _render_portfolio(p: dict):
-    df = pd.DataFrame(p["assets"])
-
-    col_pie, col_sc = st.columns([1, 1.5])
-
-    with col_pie:
-        st.markdown('<div class="sh">Allocation</div>', unsafe_allow_html=True)
-        fig = go.Figure(go.Pie(
-            labels=df["name"], values=df["weight"],
-            hole=0.45, marker_colors=_COLORS,
-            textinfo="label+percent", textfont_size=10,
-        ))
-        fig.update_layout(**_PT, height=260, showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
-
-    with col_sc:
-        st.markdown('<div class="sh">Risk vs Expected Return</div>', unsafe_allow_html=True)
-        fig2 = go.Figure(go.Scatter(
-            x=df["volatility"] * 100,
-            y=df["expected_return"] * 100,
-            mode="markers+text",
-            marker=dict(
-                size=df["weight"] * 200 + 10,
-                color="#00d4aa", opacity=.85,
-                line=dict(color="#0a0e1a", width=1),
-            ),
-            text=df["name"], textposition="top center",
-            textfont=dict(color="#e2e8f0", size=9),
-        ))
-        fig2.update_layout(
-            **_PT, height=260,
-            xaxis=dict(title="Volatility (%)", showgrid=True,
-                       gridcolor="#1e2d40", color="#64748b"),
-            yaxis=dict(title="Exp. Return (%)", showgrid=True,
-                       gridcolor="#1e2d40", color="#64748b"),
-        )
-        st.plotly_chart(fig2, use_container_width=True)
-
-    st.markdown('<div class="sh">Asset Detail</div>', unsafe_allow_html=True)
-    disp = df[["name","type","sector","weight",
-               "expected_return","volatility","allocated"]].copy()
-    disp.columns = ["Asset","Type","Sector","Weight",
-                    "Exp. Return","Volatility","Allocated (₹)"]
-    disp["Weight"]         = disp["Weight"].map(lambda x: f"{x*100:.1f}%")
-    disp["Exp. Return"]    = disp["Exp. Return"].map(lambda x: f"{x*100:.2f}%")
-    disp["Volatility"]     = disp["Volatility"].map(lambda x: f"{x*100:.2f}%")
-    disp["Allocated (₹)"]  = disp["Allocated (₹)"].map(lambda x: f"₹{x:,.2f}")
-    st.dataframe(disp, use_container_width=True, hide_index=True)
+def close_connection(conn, cursor):
+    try:
+        if cursor: cursor.close()
+        if conn:   conn.close()
+    except Exception:
+        pass
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  VIEW A — LOGIN / REGISTER
-# ─────────────────────────────────────────────────────────────────────────────
-def view_auth():
-    _, mid, _ = st.columns([1, 2, 1])
-    with mid:
-        st.markdown("<div style='height:30px'></div>", unsafe_allow_html=True)
-        st.markdown(
-            '<div style="text-align:center;font-size:2.2rem;font-weight:800;'
-            'color:#00d4aa;margin-bottom:4px;">💼 PortfolioSim</div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            '<div style="text-align:center;color:#64748b;margin-bottom:28px;">'
-            'Smart portfolio generation · Modern Portfolio Theory</div>',
-            unsafe_allow_html=True,
-        )
-
-        if not _db_ok:
-            st.error(
-                f"⚠️ Cannot reach the database.\n\n"
-                f"Edit **config.py** with your MySQL credentials.\n\n`{_db_err}`"
+def init_db():
+    """Create all tables if they don't exist. Called once at startup."""
+    conn, cursor = get_connection()
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id            INT PRIMARY KEY AUTO_INCREMENT,
+                username      VARCHAR(100) UNIQUE NOT NULL,
+                email         VARCHAR(255) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-            st.stop()
-
-        tab_in, tab_up = st.tabs(["🔐 Login", "📝 Register"])
-
-        with tab_in:
-            st.markdown("")
-            with st.form("f_login"):
-                username = st.text_input("Username")
-                password = st.text_input("Password", type="password")
-                if st.form_submit_button("Login →", use_container_width=True):
-                    if not (username and password):
-                        st.error("Please fill all fields.")
-                    else:
-                        ok, res = login_user(username, password)
-                        if ok:
-                            set_session(res)
-                            st.session_state["view"] = "profiles"
-                            st.rerun()
-                        else:
-                            st.error(f"❌ {res}")
-
-        with tab_up:
-            st.markdown("")
-            with st.form("f_register"):
-                ru = st.text_input("Username")
-                re = st.text_input("Email")
-                rp = st.text_input("Password", type="password")
-                rp2 = st.text_input("Confirm Password", type="password")
-                if st.form_submit_button("Create Account →", use_container_width=True):
-                    if not all([ru, re, rp, rp2]):
-                        st.error("Please fill all fields.")
-                    elif rp != rp2:
-                        st.error("Passwords do not match.")
-                    else:
-                        ok, _, msg = register_user(ru, re, rp)
-                        if ok:
-                            ok2, user_data = login_user(ru, rp)
-                            if ok2:
-                                set_session(user_data)
-                                st.session_state["view"] = "profiles"
-                                st.rerun()
-                        else:
-                            st.error(f"❌ {msg}")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  VIEW B — PROFILES LIST
-# ─────────────────────────────────────────────────────────────────────────────
-def view_profiles():
-    user     = current_user()
-    profiles = get_all_profiles(user["id"])
-
-    st.markdown("# My Profiles")
-    st.markdown(
-        f'<p style="color:#64748b;margin-top:-10px;">Account: '
-        f'<strong>{user["username"]}</strong></p>',
-        unsafe_allow_html=True,
-    )
-    st.markdown("---")
-
-    # ── Profile cards ──────────────────────────────────────────────────────
-    st.markdown('<div class="sh">Your Profiles</div>', unsafe_allow_html=True)
-
-    if not profiles:
-        st.info("No profiles yet. Create your first profile below ↓")
-    else:
-        for p in profiles:
-            lbl = get_risk_label(p["risk_capacity"])
-            clr = _RISK_C[lbl]
-            col_info, col_open = st.columns([6, 1])
-
-            with col_info:
-                st.markdown(f"""
-                <div class="card">
-                  <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-size:1.1rem;font-weight:800;">{p['name']}</span>
-                    <span class="badge {_RISK_B[lbl]}">{lbl}</span>
-                  </div>
-                  <div class="stat-row">
-                    <dl class="stat"><dt>Age</dt><dd>{p['age']}</dd></dl>
-                    <dl class="stat"><dt>Job</dt><dd>{p['occupation'] or '—'}</dd></dl>
-                    <dl class="stat"><dt>Income</dt><dd>₹{float(p['income'] or 0):,.0f}</dd></dl>
-                    <dl class="stat"><dt>Invest</dt><dd>₹{float(p['investment_amount'] or 0):,.0f}</dd></dl>
-                    <dl class="stat"><dt>Risk</dt>
-                      <dd style="color:{clr};">{p['risk_capacity']}/10</dd></dl>
-                    <dl class="stat"><dt>Horizon</dt>
-                      <dd>{p['investment_horizon'] or '—'}</dd></dl>
-                  </div>
-                </div>""", unsafe_allow_html=True)
-
-            with col_open:
-                st.markdown("<div style='height:26px'></div>", unsafe_allow_html=True)
-                if st.button("Open →", key=f"op_{p['id']}", use_container_width=True):
-                    st.session_state.update(
-                        view="detail",
-                        pid=p["id"],
-                    )
-                    st.session_state.pop("preview", None)
-                    st.rerun()
-
-    # ── Create profile form ────────────────────────────────────────────────
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<div class="sh">Create New Profile</div>', unsafe_allow_html=True)
-
-    with st.form("f_create_profile"):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            name       = st.text_input("Full Name *")
-            age        = st.number_input("Age *", 1, 100, 30)
-            occupation = st.text_input("Job / Occupation")
-        with c2:
-            income    = st.number_input("Annual Income (₹)*",    0.0, step=10000.0, value=500000.0)
-            inv_amt   = st.number_input("Investment Amount (₹)*",0.0, step=5000.0,  value=100000.0)
-            horizon   = st.selectbox("Investment Horizon *", [
-                "Short (< 1 yr)",
-                "Medium (1–3 yrs)",
-                "Long (3–7 yrs)",
-                "Very Long (7+ yrs)",
-            ])
-        with c3:
-            risk = st.selectbox("Risk Capacity (1–10) *", list(range(1,11)),
-                format_func=lambda x: {
-                    1:"1 — Very Safe",    2:"2 — Very Safe",
-                    3:"3 — Conservative", 4:"4 — Conservative",
-                    5:"5 — Balanced",     6:"6 — Balanced",
-                    7:"7 — Aggressive",   8:"8 — Aggressive",
-                    9:"9 — High Risk",   10:"10 — Maximum Risk",
-                }[x])
-            goal = st.text_area("Investment Goal",
-                placeholder="e.g. Retirement, child education, buy a house…",
-                height=118)
-
-        if st.form_submit_button("➕ Create Profile", use_container_width=True):
-            if not name:
-                st.error("Name is required.")
-            else:
-                ok, pid, msg = create_profile(
-                    user["id"], name, age, occupation,
-                    income, inv_amt, risk, horizon, goal,
-                )
-                if ok:
-                    st.success(f"✅ Profile **{name}** created!")
-                    st.rerun()
-                else:
-                    st.error(f"❌ {msg}")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  VIEW C — PROFILE DETAIL
-# ─────────────────────────────────────────────────────────────────────────────
-def view_profile_detail():
-    user = current_user()
-    pid  = st.session_state.get("pid")
-
-    if not pid:
-        st.session_state["view"] = "profiles"
-        st.rerun()
-
-    profile = get_profile(pid, user["id"])
-    if not profile:
-        st.error("Profile not found.")
-        st.session_state["view"] = "profiles"
-        st.rerun()
-
-    lbl = get_risk_label(profile["risk_capacity"])
-    clr = _RISK_C[lbl]
-
-    # ── Header ─────────────────────────────────────────────────────────────
-    st.markdown(f"# {profile['name']}")
-    st.markdown(
-        f'<span class="badge {_RISK_B[lbl]}">{lbl}</span>'
-        f'&nbsp;&nbsp;<span style="color:#64748b;font-size:.82rem;">'
-        f'Profile #{profile["id"]}</span>',
-        unsafe_allow_html=True,
-    )
-    st.markdown("---")
-
-    # ── Profile stats ──────────────────────────────────────────────────────
-    st.markdown('<div class="sh">Profile Details</div>', unsafe_allow_html=True)
-    c1,c2,c3,c4 = st.columns(4)
-    c1.metric("Age",               profile["age"])
-    c2.metric("Occupation",        profile["occupation"] or "—")
-    c3.metric("Annual Income",     f"₹{float(profile['income'] or 0):,.0f}")
-    c4.metric("Investment Amount", f"₹{float(profile['investment_amount'] or 0):,.0f}")
-
-    st.markdown("")
-    c5,c6,c7 = st.columns(3)
-    c5.metric("Risk Capacity",     f"{profile['risk_capacity']}/10  ({lbl.title()})")
-    c6.metric("Investment Horizon",profile["investment_horizon"] or "—")
-    c7.metric("Investment Goal",   profile["investment_goal"]    or "—")
-
-    # ── Danger zone ────────────────────────────────────────────────────────
-    with st.expander("⚠️ Danger Zone — Delete Profile"):
-        st.warning("Deleting this profile also deletes all its saved portfolios.")
-        if st.button("🗑️ Delete This Profile", key="del_profile"):
-            delete_profile(pid, user["id"])
-            st.session_state.update(view="profiles")
-            st.session_state.pop("pid",     None)
-            st.session_state.pop("preview", None)
-            st.rerun()
-
-    st.markdown("---")
-
-    # ── GENERATE RECOMMENDATION ────────────────────────────────────────────
-    st.markdown('<div class="sh">Generate Portfolio Recommendation</div>',
-                unsafe_allow_html=True)
-
-    # Step 1 — big button to open the form
-    if not st.session_state.get("show_gen_form") and not st.session_state.get("preview"):
-        if st.button("🚀  Generate Recommendation", use_container_width=True, key="btn_open_form"):
-            st.session_state["show_gen_form"] = True
-            st.rerun()
-
-    # Step 2 — input form (shown after clicking the button)
-    if st.session_state.get("show_gen_form") and not st.session_state.get("preview"):
-        st.markdown("")
-        st.markdown('<div class="sh">Recommendation Inputs</div>', unsafe_allow_html=True)
-        st.caption("Fill in your preferences — the engine will generate a personalised portfolio.")
-
-        with st.form("gen_form"):
-            fa, fb = st.columns(2)
-            with fa:
-                form_amount = st.number_input(
-                    "💰 Investment Amount (₹)",
-                    min_value=1000.0,
-                    value=float(profile.get("investment_amount") or 100000),
-                    step=5000.0,
-                )
-                form_horizon = st.selectbox(
-                    "⏳ Time Horizon",
-                    ["Short (< 1 yr)", "Medium (1–3 yrs)", "Long (3–7 yrs)", "Very Long (7+ yrs)"],
-                    index=["Short (< 1 yr)", "Medium (1–3 yrs)",
-                           "Long (3–7 yrs)", "Very Long (7+ yrs)"].index(
-                               profile.get("investment_horizon") or "Medium (1–3 yrs)"
-                           ) if profile.get("investment_horizon") in
-                           ["Short (< 1 yr)", "Medium (1–3 yrs)",
-                            "Long (3–7 yrs)", "Very Long (7+ yrs)"] else 1,
-                )
-            with fb:
-                form_risk = st.selectbox(
-                    "⚡ Risk Preference",
-                    list(range(1, 11)),
-                    index=int(profile.get("risk_capacity") or 5) - 1,
-                    format_func=lambda x: {
-                        1:"1 — Very Safe",    2:"2 — Very Safe",
-                        3:"3 — Conservative", 4:"4 — Conservative",
-                        5:"5 — Balanced",     6:"6 — Balanced",
-                        7:"7 — Aggressive",   8:"8 — Aggressive",
-                        9:"9 — High Risk",   10:"10 — Maximum Risk",
-                    }[x],
-                )
-                all_sector_names = list(SECTORS.values())
-                form_sectors = st.multiselect(
-                    "🏭 Interested Sectors (optional — leave empty for auto-select)",
-                    all_sector_names,
-                    default=[],
-                    help="Select up to 3 sectors. If none selected, sectors are chosen based on your risk profile.",
-                )
-
-            col_gen, col_cancel = st.columns([2, 1])
-            with col_gen:
-                submitted = st.form_submit_button(
-                    "⚙️ Generate Portfolio", use_container_width=True
-                )
-            with col_cancel:
-                cancelled = st.form_submit_button(
-                    "Cancel", use_container_width=True
-                )
-
-        if cancelled:
-            st.session_state.pop("show_gen_form", None)
-            st.rerun()
-
-        if submitted:
-            # Map sector names back to IDs
-            sector_name_to_id = {v: k for k, v in SECTORS.items()}
-            sel_ids = [sector_name_to_id[s] for s in form_sectors if s in sector_name_to_id]
-            with st.spinner("Running Markowitz engine…"):
-                st.session_state["preview"] = generate_recommendation(
-                    profile,
-                    investment_amount=form_amount,
-                    selected_sector_ids=sel_ids if sel_ids else None,
-                    time_horizon=form_horizon,
-                    risk_override=form_risk,
-                )
-            st.session_state.pop("show_gen_form", None)
-            st.rerun()
-
-    # Step 3 — show preview after generation
-    prev = st.session_state.get("preview")
-    if prev and prev.get("profile_id") == pid:
-        st.markdown("")
-        st.markdown('<div class="sh">Generated Portfolio Preview</div>',
-                    unsafe_allow_html=True)
-
-        # Show what inputs were used
-        st.markdown(f"""
-        <div style="background:#0a0e1a;border-radius:10px;padding:14px 18px;
-                    margin-bottom:16px;display:flex;gap:32px;flex-wrap:wrap;">
-          <div><span style="color:#64748b;font-size:.7rem;text-transform:uppercase;">
-            Amount</span><br>
-            <span style="font-family:'Space Mono';color:#00d4aa;">
-              ₹{prev.get('investment_amount', prev.get('base_amount',0)):,.0f}
-            </span></div>
-          <div><span style="color:#64748b;font-size:.7rem;text-transform:uppercase;">
-            Horizon</span><br>
-            <span style="font-family:'Space Mono';">
-              {prev.get('time_horizon') or '—'}
-            </span></div>
-          <div><span style="color:#64748b;font-size:.7rem;text-transform:uppercase;">
-            Risk Used</span><br>
-            <span style="font-family:'Space Mono';">
-              {prev.get('risk_used', '—')}/10
-            </span></div>
-          <div><span style="color:#64748b;font-size:.7rem;text-transform:uppercase;">
-            Sectors</span><br>
-            <span style="font-family:'Space Mono';">
-              {", ".join(prev.get('selected_sectors') or []) or 'Auto-selected'}
-            </span></div>
-        </div>""", unsafe_allow_html=True)
-
-        m1,m2,m3,m4 = st.columns(4)
-        m1.metric("Expected Return",   f"{prev['expected_return']*100:.2f}%")
-        m2.metric("Portfolio Variance",f"{prev['variance']*100:.4f}%")
-        m3.metric("Sharpe Ratio",      prev.get("sharpe","—"))
-        m4.metric("Risk Type",         prev["risk_type"].title())
-        st.markdown("")
-
-        _render_portfolio(prev)
-
-        # Save / Discard row
-        st.markdown("")
-        lc, sc, dc = st.columns([3, 1, 1])
-        with lc:
-            port_lbl = st.text_input(
-                "Portfolio Label (optional)",
-                placeholder=f"{prev['risk_type'].title()} Portfolio",
-                key="port_lbl",
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS profiles (
+                id                 INT PRIMARY KEY AUTO_INCREMENT,
+                user_id            INT NOT NULL,
+                name               VARCHAR(100) NOT NULL,
+                age                INT,
+                occupation         VARCHAR(100),
+                income             DECIMAL(15,2),
+                investment_amount  DECIMAL(15,2),
+                risk_capacity      INT,
+                investment_horizon VARCHAR(50),
+                investment_goal    VARCHAR(200),
+                created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
-        with sc:
-            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            if st.button("💾 Save Portfolio", use_container_width=True, key="btn_save"):
-                ok, res = save_portfolio(user["id"], pid, prev, port_lbl)
-                if ok:
-                    st.success("✅ Portfolio saved!")
-                    st.session_state.pop("preview", None)
-                    st.rerun()
-                else:
-                    st.error(f"❌ Save failed: {res}")
-        with dc:
-            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            if st.button("✕ Discard", use_container_width=True, key="btn_discard"):
-                st.session_state.pop("preview", None)
-                st.rerun()
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS saved_portfolios (
+                id                 INT PRIMARY KEY AUTO_INCREMENT,
+                user_id            INT NOT NULL,
+                profile_id         INT NOT NULL,
+                label              VARCHAR(100),
+                portfolio_json     TEXT NOT NULL,
+                exp_return         DECIMAL(6,4),
+                variance           DECIMAL(8,6),
+                risk_type          VARCHAR(20),
+                investment_amount  DECIMAL(15,2),
+                selected_sectors   VARCHAR(255),
+                time_horizon       VARCHAR(50),
+                created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id)    REFERENCES users(id)    ON DELETE CASCADE,
+                FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE
+            )
+        """)
+        conn.commit()
 
-    st.markdown("---")
+        # Migrate existing table if new columns are missing
+        for col, defn in [
+            ("investment_amount", "DECIMAL(15,2)"),
+            ("selected_sectors",  "VARCHAR(255)"),
+            ("time_horizon",      "VARCHAR(50)"),
+        ]:
+            try:
+                cursor.execute(
+                    f"ALTER TABLE saved_portfolios ADD COLUMN {col} {defn}"
+                )
+                conn.commit()
+            except Exception:
+                pass  # column already exists
 
-    # ── SAVED PORTFOLIOS ───────────────────────────────────────────────────
-    st.markdown('<div class="sh">Saved Portfolios</div>', unsafe_allow_html=True)
-
-    saved = get_saved_portfolios(pid, user["id"])
-
-    if not saved:
-        st.info("No saved portfolios yet. Generate one above ↑")
-    else:
-        for sp in saved:
-            pdata   = sp["portfolio_json"]
-            rc      = _RISK_C.get(sp["risk_type"], "#00d4aa")
-            created = str(sp["created_at"])[:16]
-
-            with st.expander(
-                f"📁  {sp['label']}   ·   {sp['risk_type'].title()}"
-                f"   ·   Saved {created}"
-            ):
-                sm1,sm2,sm3,sm4 = st.columns(4)
-                sm1.metric("Expected Return", f"{float(sp['exp_return'])*100:.2f}%")
-                sm2.metric("Variance",        f"{float(sp['variance'])*100:.4f}%")
-                sm3.metric("Invested Amount", f"₹{float(sp.get('investment_amount') or pdata.get('base_amount',0)):,.0f}")
-                sm4.metric("Assets",          len(pdata.get("assets",[])))
-                # Show sectors + horizon if stored
-                sectors_str  = sp.get("selected_sectors") or ""
-                horizon_str  = sp.get("time_horizon") or pdata.get("time_horizon","")
-                risk_used    = pdata.get("risk_used","")
-                if sectors_str or horizon_str or risk_used:
-                    st.markdown(f"""
-                    <div style="background:#0a0e1a;border-radius:8px;padding:10px 16px;
-                                margin-bottom:12px;display:flex;gap:28px;flex-wrap:wrap;">
-                      <div><span style="color:#64748b;font-size:.68rem;text-transform:uppercase;">
-                        Sectors</span><br>
-                        <span style="font-family:'Space Mono';font-size:.82rem;">
-                          {sectors_str or 'Auto-selected'}
-                        </span></div>
-                      <div><span style="color:#64748b;font-size:.68rem;text-transform:uppercase;">
-                        Horizon</span><br>
-                        <span style="font-family:'Space Mono';font-size:.82rem;">
-                          {horizon_str or '—'}
-                        </span></div>
-                      <div><span style="color:#64748b;font-size:.68rem;text-transform:uppercase;">
-                        Risk Used</span><br>
-                        <span style="font-family:'Space Mono';font-size:.82rem;">
-                          {str(risk_used) + '/10' if risk_used else '—'}
-                        </span></div>
-                    </div>""", unsafe_allow_html=True)
-                st.markdown("")
-
-                _render_portfolio(pdata)
-
-                st.markdown("")
-                sc_col, del_col = st.columns([3,1])
-
-                with sc_col:
-                    if st.button("🔄 Simulate Current Value",
-                                 key=f"sim_{sp['id']}"):
-                        sim = simulate_value(pdata)
-                        sign  = "+" if sim["change_pct"] >= 0 else ""
-                        color = "#22c55e" if sim["change_pct"] >= 0 else "#ef4444"
-                        st.markdown(f"""
-                        <div style="background:#0a0e1a;border-radius:10px;
-                                    padding:16px;margin-top:8px;">
-                          <div style="font-size:.72rem;color:#64748b;
-                                      text-transform:uppercase;letter-spacing:1px;">
-                            Simulated Current Value
-                          </div>
-                          <div style="font-family:'Space Mono';font-size:1.8rem;
-                                      font-weight:700;color:{color};">
-                            ₹{sim['current_value']:,.2f}
-                            <span style="font-size:.95rem;">
-                              ({sign}{sim['change_pct']:.2f}%)
-                            </span>
-                          </div>
-                          <div style="color:#64748b;font-size:.75rem;margin-top:4px;">
-                            Market sentiment: {sim['sentiment']:+.3f}
-                            · Refreshes on each click
-                          </div>
-                        </div>""", unsafe_allow_html=True)
-
-                with del_col:
-                    st.markdown("<div style='height:4px'></div>",
-                                unsafe_allow_html=True)
-                    if st.button("🗑️ Delete", key=f"del_{sp['id']}",
-                                 use_container_width=True):
-                        delete_saved_portfolio(sp["id"], user["id"])
-                        st.rerun()
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  ROUTER
-# ─────────────────────────────────────────────────────────────────────────────
-def main():
-    if not is_logged_in():
-        view_auth()
-        return
-
-    view = st.session_state.get("view", "profiles")
-
-    if view == "profiles":
-        view_profiles()
-    elif view == "detail":
-        view_profile_detail()
-    else:
-        st.session_state["view"] = "profiles"
-        st.rerun()
-
-
-main()
+    finally:
+        close_connection(conn, cursor)
