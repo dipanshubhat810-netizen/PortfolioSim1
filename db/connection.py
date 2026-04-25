@@ -1,43 +1,27 @@
 # db/connection.py
 import mysql.connector
-from config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
+from config import DB_HOST, DB_USER, DB_PASSWORD, DB_NAME
 
 
-def get_connection(use_db=True):
-    """
-    Returns (conn, cursor).
-    If use_db=False, it connects to the server without selecting a database.
-    """
-    config = {
-        "host": DB_HOST,
-        "port": DB_PORT,
-        "user": DB_USER,
-        "password": DB_PASSWORD,
-    }
-
-    if use_db:
-        config["database"] = DB_NAME
-
-    conn = mysql.connector.connect(**config)
+def get_connection():
+    conn   = mysql.connector.connect(
+        host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME
+    )
     cursor = conn.cursor(dictionary=True)
     return conn, cursor
 
 
 def close_connection(conn, cursor):
     try:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+        if cursor: cursor.close()
+        if conn:   conn.close()
     except Exception:
         pass
 
 
 def init_db():
-    """Create all tables if they don't exist."""
-
-    conn, cursor = get_connection(use_db=True)
-
+    """Create all tables if they don't exist. Called once at startup."""
+    conn, cursor = get_connection()
     try:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -48,7 +32,6 @@ def init_db():
                 created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS profiles (
                 id                 INT PRIMARY KEY AUTO_INCREMENT,
@@ -65,24 +48,39 @@ def init_db():
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         """)
-
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS saved_portfolios (
-                id             INT PRIMARY KEY AUTO_INCREMENT,
-                user_id        INT NOT NULL,
-                profile_id     INT NOT NULL,
-                label          VARCHAR(100),
-                portfolio_json TEXT NOT NULL,
-                exp_return     DECIMAL(6,4),
-                variance       DECIMAL(8,6),
-                risk_type      VARCHAR(20),
-                created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                id                 INT PRIMARY KEY AUTO_INCREMENT,
+                user_id            INT NOT NULL,
+                profile_id         INT NOT NULL,
+                label              VARCHAR(100),
+                portfolio_json     TEXT NOT NULL,
+                exp_return         DECIMAL(6,4),
+                variance           DECIMAL(8,6),
+                risk_type          VARCHAR(20),
+                investment_amount  DECIMAL(15,2),
+                selected_sectors   VARCHAR(255),
+                time_horizon       VARCHAR(50),
+                created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id)    REFERENCES users(id)    ON DELETE CASCADE,
                 FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE
             )
         """)
-
         conn.commit()
+
+        # Migrate existing table if new columns are missing
+        for col, defn in [
+            ("investment_amount", "DECIMAL(15,2)"),
+            ("selected_sectors",  "VARCHAR(255)"),
+            ("time_horizon",      "VARCHAR(50)"),
+        ]:
+            try:
+                cursor.execute(
+                    f"ALTER TABLE saved_portfolios ADD COLUMN {col} {defn}"
+                )
+                conn.commit()
+            except Exception:
+                pass  # column already exists
 
     finally:
         close_connection(conn, cursor)
