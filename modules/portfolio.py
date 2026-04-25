@@ -101,23 +101,61 @@ def _port_variance(assets, weights):
     return round(v, 6)
 
 
-def generate_recommendation(profile: dict) -> dict:
-    """Full Markowitz engine. Returns preview dict."""
-    risk      = profile.get("risk_capacity", 5)
-    base      = float(profile.get("investment_amount") or 100000)
-    assets    = _select_assets(profile)
+def generate_recommendation(profile: dict,
+                             investment_amount: float = None,
+                             selected_sector_ids: list = None,
+                             time_horizon: str = None,
+                             risk_override: int = None) -> dict:
+    """
+    Full Markowitz engine. Returns preview dict.
+    Explicit inputs (from the form) override profile defaults when provided.
+    """
+    risk     = risk_override if risk_override is not None else profile.get("risk_capacity", 5)
+    base     = float(investment_amount or profile.get("investment_amount") or 100000)
+    horizon  = time_horizon or profile.get("investment_horizon") or ""
+    goal     = (profile.get("investment_goal") or "").lower()
+
+    # Build a temporary profile-like dict for _select_assets
+    effective_profile = {
+        **profile,
+        "risk_capacity":      risk,
+        "investment_horizon": horizon,
+        "investment_goal":    goal,
+    }
+
+    # If user picked sectors explicitly, filter assets to those sectors only
+    if selected_sector_ids:
+        pool          = [a for a in ASSETS if a["sector_id"] in selected_sector_ids]
+        prefer_bonds  = "short" in horizon.lower() or risk <= 3
+        pool          = sorted(pool,
+            key=lambda a: (0 if (a["type"] == "Bond") == prefer_bonds else 1,
+                           -_sharpe(a["er"], a["vol"])))
+        selected, count = [], {}
+        for a in pool:
+            count[a["sector_id"]] = count.get(a["sector_id"], 0)
+            if count[a["sector_id"]] < TOP_ASSETS_PER_SECTOR:
+                selected.append(a)
+                count[a["sector_id"]] += 1
+        assets = selected if selected else _select_assets(effective_profile)
+    else:
+        assets = _select_assets(effective_profile)
+
     w         = _weights(assets, risk)
     exp_ret   = _port_return(assets, w)
     variance  = _port_variance(assets, w)
     risk_type = "conservative" if risk <= 3 else ("balanced" if risk <= 6 else "aggressive")
 
     return {
-        "profile_id":      profile["id"],
-        "base_amount":     base,
-        "expected_return": exp_ret,
-        "variance":        variance,
-        "risk_type":       risk_type,
-        "sharpe":          round(_sharpe(exp_ret, variance**0.5), 3),
+        "profile_id":         profile["id"],
+        "base_amount":        base,
+        "investment_amount":  base,
+        "selected_sectors":   [SECTORS[sid] for sid in (selected_sector_ids or [])],
+        "time_horizon":       horizon,
+        "risk_used":          risk,
+        "expected_return":    exp_ret,
+        "variance":           variance,
+        "risk_type":          risk_type,
+        "sharpe":             round(_sharpe(exp_ret, variance**0.5), 3),
         "assets": [{
             "id":              a["id"],
             "name":            a["name"],
@@ -157,16 +195,22 @@ def simulate_value(portfolio: dict) -> dict:
 def save_portfolio(user_id: int, profile_id: int, preview: dict, label: str = ""):
     conn, cursor = get_connection()
     try:
+        sectors_str = ", ".join(preview.get("selected_sectors") or [])
         cursor.execute("""
             INSERT INTO saved_portfolios
-              (user_id, profile_id, label, portfolio_json, exp_return, variance, risk_type)
-            VALUES (%s,%s,%s,%s,%s,%s,%s)
+              (user_id, profile_id, label, portfolio_json,
+               exp_return, variance, risk_type,
+               investment_amount, selected_sectors, time_horizon)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """, (user_id, profile_id,
               label or f"{preview['risk_type'].title()} Portfolio",
               json.dumps(preview),
               preview["expected_return"],
               preview["variance"],
-              preview["risk_type"]))
+              preview["risk_type"],
+              preview.get("investment_amount", preview.get("base_amount", 0)),
+              sectors_str,
+              preview.get("time_horizon", "")))
         conn.commit()
         return True, cursor.lastrowid
     except Exception as e:
@@ -179,7 +223,8 @@ def get_saved_portfolios(profile_id: int, user_id: int):
     conn, cursor = get_connection()
     try:
         cursor.execute("""
-            SELECT id, label, exp_return, variance, risk_type, created_at, portfolio_json
+            SELECT id, label, exp_return, variance, risk_type, created_at,
+                   portfolio_json, investment_amount, selected_sectors, time_horizon
             FROM saved_portfolios
             WHERE profile_id=%s AND user_id=%s
             ORDER BY created_at DESC
